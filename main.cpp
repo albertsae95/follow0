@@ -215,7 +215,7 @@ void processSide(std::vector<Lane> lanes, IplImage *edges, bool right) {
     delete[] votes;
 }
 
-void processLanes(std::vector<Lane> lines, IplImage* edges, IplImage* temp_frame) {
+void processLanes(CvSeq* lines, IplImage* edges, IplImage* temp_frame) {
 
     // classify lines to left/right side
     std::vector<Lane> left, right;
@@ -291,72 +291,88 @@ int main(void)
     Mat frame;
 
     Size frame_size = Size(video_size.width, video_size.height/2);
-    Mat temp_frame(frame_size, IPL_DEPTH_8U, 3);
-    Mat grey(frame_size, IPL_DEPTH_8U, 1);
-    Mat edges(frame_size, IPL_DEPTH_8U, 1);
-    Mat half_frame(video_size.width/2, video_size.height/2, IPL_DEPTH_8U, 3);
+    //Mat half_frame(video_size.width/2, video_size.height/2, IPL_DEPTH_8U, 3);
+    Mat temp_frame(frame_size, CV_8UC3);
+    Mat grey(frame_size, CV_8UC1);
+    Mat edges(frame_size, CV_8UC1);
 
-    CvMemStorage* houghStorage = cvCreateMemStorage(0);
+    //CvMemStorage* houghStorage = cvCreateMemStorage(0);
 
     //cvSetCaptureProperty(input_video, CV_CAP_PROP_POS_FRAMES, current_frame);
-    while(key_pressed != 27) {
+
+while(key_pressed != 27) {
 
     capture.read(frame);
     imshow("display", frame);
-    moveWindow("display", frame_size.width+75, 0);
-    imshow("edges from cvCanny", edges);
-    moveWindow("edges from cvCanny", frame_size.width+75, 75);
-    key_pressed = waitKey(20);
+    moveWindow("display", video_size.width+75, 0);
 
-    //double fx=0, double fy=0, int interpolation=INTER_LINEAR
-    resize(frame, half_frame, half_frame.size()); // Reduce the image by 2
+    key_pressed = waitKey(50);
 
-    //cv::pyrDown(frame, half_frame, half_frame.size(), CV_GAUSSIAN_5x5); // Reduce the image by 2
+    //resize(frame, half_frame, half_frame.size()); // Reduce the image by 2
+    crop(frame, temp_frame, cvRect(0,frame_size.height, frame_size.width, frame_size.height));
 
-    // we're interested only in road below horizon - so crop top image portion off
-    crop(frame, temp_frame, cvRect(0,frame_size.height,frame_size.width,frame_size.height/2));
-    cvtColor(temp_frame, grey, CV_BGR2GRAY); // convert to grayscale
+    if (temp_frame.empty() == 1){
+        fprintf(stderr, "Error: image is empty\n");
+        return -1;
+    }
+    cvtColor(temp_frame, grey, cv::COLOR_BGR2GRAY); // convert to grayscale
 
-    // Perform a Gaussian blur ( Convolving with 5 X 5 Gaussian) & detect edges
-    //CV_GAUSSIAN_5x5.size;
-    int ksize=3;
+    // Perform a Gaussian blur ( Convolving with 5 X 5 Gaussian) & detect edges CV_GAUSSIAN_5x5.size;
+    int ksize=5;
     double sigma=0.3*((ksize-1)*0.5 - 1) + 0.8;
     int ktype=CV_32F;
     Mat getGaussianKernel(ksize, sigma, ktype);
+
     //Mat.getGaussianKernel(int ksize=3, double 0.3*((ksize-1)*0.5 - 1) + 0.8, CV_32F);
     //cvSmooth (CvArr* grey, CvArr* grey, int smoothtype=CV_GAUSSIAN, int size1=3, int size2=0, double sigma1=0, double sigma2=0 );
     Size kernel_size = getGaussianKernel.size();
+
     GaussianBlur(grey, grey, kernel_size, 0, 0, BORDER_CONSTANT);
 
     Canny(grey, edges, CANNY_MIN_TRESHOLD, CANNY_MAX_TRESHOLD);
+
+    imshow("edges from cvCanny", edges);
+    moveWindow("edges from cvCanny", 0, 150);
     //std::vector<Lane> lines;
 
-    // do Hough transform to find lanes
-    CvSeq* lines = HoughLinesP(edges, houghStorage, rho, theta, HOUGH_TRESHOLD, HOUGH_MIN_LINE_LENGTH, HOUGH_MAX_LINE_GAP);
+    vector<Vec2i> curves;
+    //CvSeq* spotted = cvCreateSeq( 0, CV_SEQ_ELTYPE_POINT, sizeof(CvPoint), houghStorage);
 
-    processLanes(lines, edges, temp_frame);
+    // do Hough transform to find lanes
+    HoughLines(edges, curves, rho, theta, HOUGH_TRESHOLD, HOUGH_MIN_LINE_LENGTH, HOUGH_MAX_LINE_GAP);
+
+    for (std::vector<Vec2i>::const_iterator i = curves.begin(); i != curves.end(); ++i)
+        std::cout << *i << ' ';
+        printf("\n");
+    //spotted->h_next = cvPoint(curves[0], curves[1]);
+    //spotted = HoughLinesP(edges, curves, rho, theta, HOUGH_TRESHOLD, HOUGH_MIN_LINE_LENGTH, HOUGH_MAX_LINE_GAP);
+    //CvSeq* lines = cvHoughLines2(edges, houghStorage, HOUGH_PROBABILISTIC, rho, theta, CANNY_MIN_TRESHOLD, 0, 0, 0, CV_PI);
+    //processLanes(lines, edges, temp_frame);
 
     // show middle line
-    cvLine(temp_frame, cvPoint(frame_size.width/2,0), cvPoint(frame_size.width/2,frame_size.height), CV_RGB(255, 255, 0), 1);
+    line(temp_frame, cvPoint(frame_size.width/2,0), cvPoint(frame_size.width/2,frame_size.height), CV_RGB(255, 255, 0), 1);
 
-    cvShowImage("Grey", grey);
-    cvShowImage("Edges", edges);
-    cvShowImage("Color", temp_frame);
+    //cvShowImage("Grey", grey);
+    //cvShowImage("Edges", edges);
+    //cvShowImage("Color", temp_frame);
 
-    moveWindow("Grey", 0, 0);
-    moveWindow("Edges", 0, frame_size.height+25);
-    moveWindow("Color", 0, 2*(frame_size.height+25));
+    //moveWindow("Grey", 0, 0);
+    //moveWindow("Edges", 0, frame_size.height+25);
+    //moveWindow("Color", 0, 2*(frame_size.height+25));
 }
      //key_pressed = waitKey(5);
 
-     cvReleaseMemStorage(&houghStorage);
+     //cvReleaseMemStorage(&houghStorage);
 
-     cvReleaseImage(&grey);
-     cvReleaseImage(&edges);
-     cvReleaseImage(&temp_frame);
-     half_frame.release();
+     //cvReleaseImage(&grey);
+     //cvReleaseImage(&edges);
+     //cvReleaseImage(&temp_frame);
+
      capture.release();
      frame.release();
+     temp_frame.release();
+     grey.release();
+     edges.release();
      destroyAllWindows();
      return 0;
 }
